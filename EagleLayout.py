@@ -224,9 +224,12 @@ class Element(Board):
 		self.xml.attrib['y'] = str(float(self.xml.attrib['y']) + float(y))
 
 		for child in self.xml._children:
-			child.attrib['x'] = str(float(child.attrib['x']) + float(x))
-			child.attrib['y'] = str(float(child.attrib['y']) + float(y))
-
+			if 'x' in child.attrib:
+				child.attrib['x'] = str(float(child.attrib['x']) + float(x))
+				child.attrib['y'] = str(float(child.attrib['y']) + float(y))
+			else:
+				print child
+				
 class Signal(Board):
 
 	def __init__(self, signal):
@@ -292,3 +295,6 @@ class Plain(Board):
 			self.xml.attrib['x2'] = str(float(self.xml.attrib['x2']) + float(x))
 			self.xml.attrib['y1'] = str(float(self.xml.attrib['y1']) + float(y))
 			self.xml.attrib['y2'] = str(float(self.xml.attrib['y2']) + float(y))
+		elif self.getType() == 'hole':
+			self.xml.attrib['x'] = str(float(self.xml.attrib['x']) + float(x))
+			self.xml.attrib['y'] = str(float(self.xml.attrib['y']) + float(y))
