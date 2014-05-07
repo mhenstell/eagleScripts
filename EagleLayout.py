@@ -153,6 +153,8 @@ class Board(Drawing):
 				self.elements = child
 			elif child.tag == 'signals':
 				self.signals = child
+			else:
+				print "UNKNOWN TAG: %s" % child
 
 		self.elementList = []
 		for element in self.elements._children:
@@ -169,6 +171,7 @@ class Board(Drawing):
 			self.xml._children.append(self.plain)
 
 	def transposeElementPositions(self, (x, y)):
+
 		for element in self.elementList:
 			element.transposePosition((x, y))
 
@@ -182,6 +185,7 @@ class Board(Drawing):
 
 		for entry in self.plainList:
 			entry.transposePosition((x, y))
+			print "transposing %s" % entry.getType()
 
 	def transpose(self, (x, y)):
 		self.transposeElementPositions((x, y))
@@ -220,12 +224,17 @@ class Element(Board):
 		return (float(x), float(y))
 
 	def transposePosition(self, (x, y)):
-		self.xml.attrib['x'] = str(float(self.xml.attrib['x']) + float(x))
-		self.xml.attrib['y'] = str(float(self.xml.attrib['y']) + float(y))
+		print "Transposing element %s" % self.getName()
+		try:
+			self.xml.attrib['x'] = str(float(self.xml.attrib['x']) + float(x))
+			self.xml.attrib['y'] = str(float(self.xml.attrib['y']) + float(y))
 
-		for child in self.xml._children:
-			child.attrib['x'] = str(float(child.attrib['x']) + float(x))
-			child.attrib['y'] = str(float(child.attrib['y']) + float(y))
+			for child in self.xml._children:
+				child.attrib['x'] = str(float(child.attrib['x']) + float(x))
+				child.attrib['y'] = str(float(child.attrib['y']) + float(y))
+		except KeyError, e:
+			print "KeyError: %s" % e
+			print self.xml.text
 
 class Signal(Board):
 
@@ -292,3 +301,6 @@ class Plain(Board):
 			self.xml.attrib['x2'] = str(float(self.xml.attrib['x2']) + float(x))
 			self.xml.attrib['y1'] = str(float(self.xml.attrib['y1']) + float(y))
 			self.xml.attrib['y2'] = str(float(self.xml.attrib['y2']) + float(y))
+		elif self.getType() == 'hole':
+			self.xml.attrib['x'] = str(float(self.xml.attrib['x']) + float(x))
+			self.xml.attrib['y'] = str(float(self.xml.attrib['y']) + float(y))
