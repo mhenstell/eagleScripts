@@ -11,9 +11,12 @@ COMMAND_RE = re.compile("([MmZzLlHhVvCcSsQqTtAa])")
 FLOAT_RE = re.compile("[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?")
 
 class Point(collections.namedtuple('PointBase', ['x', 'y'])):
-	__slots__ = ()
-	def __add__(self, other):
-		return Point(x=self.x + other.x, y=self.y + other.y)
+    __slots__ = () 
+    def __add__(self, other):
+        return Point(x=self.x + other.x, y=self.y + other.y)
+
+    def __sub__(self, other):
+        return Point(x=self.x - other.x, y=self.y - other.y)
 
 def _tokenize_path(pathdef):
     for x in COMMAND_RE.split(pathdef):
@@ -112,30 +115,30 @@ def parse_path(pathdef, current_pos=Point(x=0, y=0)):
             segments.append(path.CubicBezier(current_pos, control1, control2, end))
             current_pos = end
 
-        # elif command == 'S':
-        #     # Smooth curve. First control point is the "reflection" of
-        #     # the second control point in the previous path.
+        elif command == 'S':
+            # Smooth curve. First control point is the "reflection" of
+            # the second control point in the previous path.
             
-        #     if last_command not in 'CS':
-        #         # If there is no previous command or if the previous command
-        #         # was not an C, c, S or s, assume the first control point is
-        #         # coincident with the current point.
-        #         control1 = current_pos
-        #     else:
-        #         # The first control point is assumed to be the reflection of
-        #         # the second control point on the previous command relative
-        #         # to the current point.
-        #         control1 = current_pos + current_pos - segments[-1].control2
+            if last_command not in 'CS':
+                # If there is no previous command or if the previous command
+                # was not an C, c, S or s, assume the first control point is
+                # coincident with the current point.
+                control1 = current_pos
+            else:
+                # The first control point is assumed to be the reflection of
+                # the second control point on the previous command relative
+                # to the current point.
+                control1 = current_pos + current_pos - segments[-1].control2
                 
-        #     control2 = float(elements.pop()) + float(elements.pop()) * 1j
-        #     end = float(elements.pop()) + float(elements.pop()) * 1j
+            control2 = Point(x=float(elements.pop()), y=float(elements.pop()))
+            end = Point(x=float(elements.pop()), y=float(elements.pop()))
             
-        #     if not absolute:
-        #         control2 += current_pos
-        #         end += current_pos
+            if not absolute:
+                control2 += current_pos
+                end += current_pos
                 
-        #     segments.append(path.CubicBezier(current_pos, control1, control2, end))
-        #     current_pos = end
+            segments.append(path.CubicBezier(current_pos, control1, control2, end))
+            current_pos = end
 
         # elif command == 'Q':
         #     control = float(elements.pop()) + float(elements.pop()) * 1j
