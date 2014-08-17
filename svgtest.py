@@ -1,20 +1,20 @@
 import svg.path
-from svg.path import parse_path, Path, Line, QuadraticBezier, Point
+from svg.path import Point
 import sys
 from bs4 import BeautifulSoup
 import random
 
-distanceTolerance = 0.1
-scale = 1
-strokeScale = 1
+distanceTolerance = 0.1 	# Our granularity, stops the bezier-to-point calculation at this line length
+lineScale = 1 				# Global line scale, multiple for converting SVG dimensions to EAGLE dimensions
+strokeScale = 1 			# Multiple for converting SVG path pixel widths to EAGLE mm widths
 
-paths = []
-points = []
+globalLayer = 16 			# Place all wires and polygons into this EAGLE layer
+globalSig = "bird" 			# If this variable exists, all EAGLE signals will be named this (connects all lines/polys as one signal)
+signalLayers = [1, 16]		# Signal layers, shouldn't need to change unless you have a custom EAGLE board stackup
 
-globalLayer = 16
-globalSig = "bird"
-signalLayers = [1, 16]
+				# Global 
 
+# Default path style for lines that don't have an SVG style specified
 defaultStyle = {u'opacity': u'1', u'stroke-linejoin': u'miter', u'stroke-opacity': u'1', u'stroke': u'#000000', u'stroke-linecap': u'butt', u'stroke-width': u'1px', u'fill': u'none'}
 
 def recursiveBezier(start, cp1, cp2, end):
@@ -47,7 +47,7 @@ def recursiveBezier(start, cp1, cp2, end):
 		global points
 		point = Point(x=x1234, y=y1234)
 		points.append(point)
-	else:
+	else: # We have to go deeper!
 		recursiveBezier(start, Point(x=x12, y=y12), Point(x=x123, y=y123), Point(x=x1234, y=y1234))
 		recursiveBezier(Point(x=x1234, y=y1234), Point(x=x234, y=y234), Point(x=x34, y=y34), end)
 
@@ -62,41 +62,36 @@ def bezier(start, cp1, cp2, end):
 	recursiveBezier(start, cp1, cp2, end)
 	points.append(end)
 
-
-def parseXML(filename):
+def parseXMLToLayers(filename):
 	"""Parse an SVG file into layers and paths"""
 
 	# Open the SVG file and read it into Beautiful Soup
 	with open(filename, 'r') as infile:
 
-		xml = infile.read()
-		soup = BeautifulSoup(xml)
-
-		outLayers = []
+		soup = BeautifulSoup(infile.read())
 
 		# Find all layers ('g' tags)
 		layers = soup.find_all('g')
 		
+		# What if the SVG doesn't have any layers? Spit out one layer with the path data.
 		if len(layers) == 0:
 			try:
-				path = parse_path(soup.path.attrs['d'])
+				path = svg.path.parse_path(soup.path.attrs['d'])
 				parsedPaths.append((path, defaultStyle))
-				return [paths]
+				yield [paths]
 			except KeyError, e:
 				print "Error: Could not find layers or paths in this SVG file"
 				return
 
-		# We have a layered file
+		# We have a layered file, yield the layers
 		for layer in layers:
 
 			outLayer = {}
 
-			# Ignore if layer is set to display:none
-			if 'style' in layer.attrs and layer.attrs['style'].split(':')[1] == 'none':
-				continue
-
 			if 'id' in layer.attrs:
 				outLayer['id'] = layer.attrs['id']
+			if 'style' in layer.attrs:
+				outLayer['style'] = layer.attrs['style']
 
 			# Find the path tags
 			foundPaths = layer.find_all('path')
@@ -108,7 +103,7 @@ def parseXML(filename):
 			# Parse the layer paths and styles
 			for pathTag in foundPaths:
 	
-				path = {'path':parse_path(pathTag.attrs['d'])}
+				path = {'path':svg.path.parse_path(pathTag.attrs['d'])}
 				if 'id' in pathTag.attrs:
 					path['id'] = pathTag.attrs['id']
 				style = defaultStyle
@@ -119,8 +114,8 @@ def parseXML(filename):
 
 			outLayer['paths'] = parsedPaths
 
-			outLayers.append(outLayer)
-		return outLayers
+			yield outLayer
+		return
 
 def parse_style(style):
 	"""Parse SVG style into a python dict"""
@@ -131,34 +126,24 @@ def parse_style(style):
 def pathToPointLists(path):
 	"""Convert an SVG path to a nested list of cartesian points"""
 
-	outPoints = []
-
 	for item in path:
+
 		# Only handles cubic bezier and lines for now
 		if type(item) == svg.path.path.CubicBezier:
 			global points
 			bezier(item.start, item.control1, item.control2, item.end)
-			outPoints.append(points)
+			outpoints = points
 			points = []
+			yield outpoints
+
 		# Lines make our job easy
 		elif type(item) == svg.path.path.Line:
 			linePoints = [item.start, item.end]
-			outPoints.append(linePoints)
+			yield linePoints
 		else:
 			print "Warning: skipping unknown SVG command: %s" % item
 
-	return outPoints
-
-# def getMaximums(pointLists):
-# 	maxX = 0
-# 	maxY = 0
-
-# 	for pointList in pointLists:
-# 		for point in pointList:
-# 			maxX = max(point.x, maxX)
-# 			maxY = max(point.y, maxY)
-
-# 	return maxX, maxY
+	return
 		
 def generateWires(path):
 	"""Generate EAGLE wires based on SVG paths
@@ -168,16 +153,14 @@ def generateWires(path):
 
 	# Skip this path if the opacity is less than zero
 	if 'opacity' in path['style'] and float(path['style']['opacity']) < 1:
-		print "Opacity 0"
+		print "Skipping line %s with opacity < 1" % path['id']
 		return []
 
 	stroke = 0.5 #default mm
 	if 'stroke-width' in path['style'] and 'px' in path['style']['stroke-width']:
 		stroke = int(path['style']['stroke-width'].replace('px', ''))
 	
-	width = stroke * strokeScale
-
-	pointLists = pathToPointLists(path['path'])
+	width = stroke * strokeScale # Convert SVG pixel line widths to EAGLE mm width
 
 	wires = []
 	if globalLayer in signalLayers:
@@ -187,14 +170,12 @@ def generateWires(path):
 			sig = path['id']
 		wires.append("""<signal name="%s">""" % sig)
 
-	
-	
-	for pointList in pointLists:
+	for pointList in pathToPointLists(path['path']):
 		for _ in range(0, len(pointList)-1):
 			point = pointList.pop(0)
 			# SVG and EAGLE coordinate spaces are reversed on the Y axis
 			# Reflect everything about Y 100 (arbitrary)
-			wires.append("""<wire x1="%s" y1="%s" x2="%s" y2="%s" width="%s" layer="%s" id="%s"/>""" % ((point.x * scale), ((100 - point.y) * scale), (pointList[0].x * scale), ((100 - pointList[0].y) * scale), width, globalLayer, sig))
+			wires.append("""<wire x1="%s" y1="%s" x2="%s" y2="%s" width="%s" layer="%s" id="%s"/>""" % ((point.x * lineScale), ((100 - point.y) * lineScale), (pointList[0].x * lineScale), ((100 - pointList[0].y) * lineScale), width, globalLayer, sig))
 
 	if globalLayer in signalLayers:
 		wires.append("""</signal>""")
@@ -216,6 +197,7 @@ def generatePolygon(path):
 
 	output = []
 	width = path['style']['stroke-width']
+
 	# Start the polygon with the SVG path ID as the signal name
 	if globalLayer in signalLayers:
 		if globalSig:
@@ -225,13 +207,11 @@ def generatePolygon(path):
 		output.append('<signal name="POLY-%s">' % sig)
 	output.append('<polygon width="%s" layer="%s">' % (width, globalLayer))
 
-	pointLists = pathToPointLists(path['path'])
-
 	# Add all the points as EAGLE vertexes
-	for pointList in pointLists:
+	for pointList in pathToPointLists(path['path']):
 		for _ in range(0, len(pointList)-1):
 			point = pointList.pop(0)
-			output.append("""<vertex x="%s" y="%s"/>""" % (point.x * scale, ((100 - point.y) * scale)))
+			output.append("""<vertex x="%s" y="%s"/>""" % (point.x * lineScale, ((100 - point.y) * lineScale)))
 
 	if globalLayer in signalLayers:
 		output.append('</polygon></signal>')
@@ -242,22 +222,36 @@ if __name__ == "__main__":
 	filename = sys.argv[1]
 	print "Parsing %s" % filename
 
-	layers = parseXML(filename)
-	print "Found %s Layers" % len(layers)
+	wireSegments = []	# Holds EAGLE wire definitions
+	polygons = []		# Holds EAGLE polygon definitions
+	points = []			# Global for holding points for recursive point generation
 
-	wireSegments = []
-	polygons = []
+	# Parse the layers out of our SVG file for processing
+	for layer in parseXMLToLayers(filename):
 
-	for layer in layers:
+		# Ignore if layer is set to display:none
+		if 'style' in layer and layer['style'].split(':')[1] == 'none':
+			print "Ignoring invisible layer %s" % layer['id']
+			continue
+		else:
+			print "Processing layer %s" % layer['id']
+		
+		# Grab the paths in each layer and generate 
+		# EAGLE wires or polygons depending on the path style
 		for path in layer['paths']:
 
+			# No fill, treat as wires
 			if path['style']['fill'] == 'none':
 				wireSegments.append(generateWires(path))
+
+			# SVG has a fill, treat as a polygon/ground plane
 			elif path['style']['fill'] != 'none':
 				polygons.append(generatePolygon(path))
 
 	print "Writing out %s wire segments and %s polygons" % (len(wireSegments), len(polygons))
 
+	# Write out a text file with the EAGLE wires and polygons in separate sections
+	# TODO: throw these directly into the EAGLE file without destroying anything
 	with open("outfile.txt", 'w') as f:
 		f.write("Wires:\n\n")
 		
