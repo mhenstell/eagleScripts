@@ -5,17 +5,20 @@ from bs4 import BeautifulSoup
 import random
 
 distanceTolerance = 0.1 	# Our granularity, stops the bezier-to-point calculation at this line length
-lineScale = 1 				# Global line scale, multiple for converting SVG dimensions to EAGLE dimensions
-strokeScale = 1 			# Multiple for converting SVG path pixel widths to EAGLE mm widths
+lineScale = 0.035 				# Global line scale, multiple for converting SVG dimensions to EAGLE dimensions
+strokeScale = 0.3 			# Multiple for converting SVG path pixel widths to EAGLE mm widths
+flipHorizontal = True		# Reflect the image about the vertical axis
+
 
 globalLayer = 16 			# Place all wires and polygons into this EAGLE layer
 globalSig = "bird" 			# If this variable exists, all EAGLE signals will be named this (connects all lines/polys as one signal)
 signalLayers = [1, 16]		# Signal layers, shouldn't need to change unless you have a custom EAGLE board stackup
 
-				# Global 
 
 # Default path style for lines that don't have an SVG style specified
 defaultStyle = {u'opacity': u'1', u'stroke-linejoin': u'miter', u'stroke-opacity': u'1', u'stroke': u'#000000', u'stroke-linecap': u'butt', u'stroke-width': u'1px', u'fill': u'none'}
+
+signalDefined = False
 
 def recursiveBezier(start, cp1, cp2, end):
 	""" Recursively plot the points on a cubic bezier curve 
@@ -168,16 +171,25 @@ def generateWires(path):
 			sig = globalSig
 		else:
 			sig = path['id']
-		wires.append("""<signal name="%s">""" % sig)
+			wires.append("""<signal name="%s">""" % sig)
 
 	for pointList in pathToPointLists(path['path']):
 		for _ in range(0, len(pointList)-1):
 			point = pointList.pop(0)
 			# SVG and EAGLE coordinate spaces are reversed on the Y axis
 			# Reflect everything about Y 100 (arbitrary)
-			wires.append("""<wire x1="%s" y1="%s" x2="%s" y2="%s" width="%s" layer="%s" id="%s"/>""" % ((point.x * lineScale), ((100 - point.y) * lineScale), (pointList[0].x * lineScale), ((100 - pointList[0].y) * lineScale), width, globalLayer, sig))
+			if flipHorizontal: 
+				x1 = 100 - (point.x * lineScale)
+				x2 = 100 - pointList[0].x * lineScale
+			else: 
+				x1 = point.x * lineScale
+				x2 = pointList[0].x * lineScale
 
-	if globalLayer in signalLayers:
+			y1 = (100 - point.y) * lineScale
+			y2 = (100 - pointList[0].y) * lineScale
+			wires.append("""<wire x1="%s" y1="%s" x2="%s" y2="%s" width="%s" layer="%s" id="%s"/>""" % (x1, y1, x2, y2, width, globalLayer, sig))
+
+	if globalLayer in signalLayers and not globalSig:
 		wires.append("""</signal>""")
 
 	return wires
@@ -196,7 +208,13 @@ def generatePolygon(path):
 	"""
 
 	output = []
-	width = path['style']['stroke-width']
+
+	stroke = 0.5 #default mm
+	if 'stroke-width' in path['style'] and 'px' in path['style']['stroke-width']:
+		stroke = int(path['style']['stroke-width'].replace('px', ''))
+	
+	width = stroke * strokeScale # Convert SVG pixel line widths to EAGLE mm width
+
 
 	# Start the polygon with the SVG path ID as the signal name
 	if globalLayer in signalLayers:
@@ -204,17 +222,24 @@ def generatePolygon(path):
 			sig = globalSig
 		else:
 			sig = path['id']
-		output.append('<signal name="POLY-%s">' % sig)
+			output.append('<signal name="%s">' % sig)
 	output.append('<polygon width="%s" layer="%s">' % (width, globalLayer))
 
 	# Add all the points as EAGLE vertexes
 	for pointList in pathToPointLists(path['path']):
 		for _ in range(0, len(pointList)-1):
 			point = pointList.pop(0)
-			output.append("""<vertex x="%s" y="%s"/>""" % (point.x * lineScale, ((100 - point.y) * lineScale)))
+			if flipHorizontal: 
+				x = 100 - (point.x * lineScale)
+			else: 
+				x = point.x * lineScale
 
-	if globalLayer in signalLayers:
-		output.append('</polygon></signal>')
+			y = (100 - point.y) * lineScale
+			output.append("""<vertex x="%s" y="%s"/>""" % (x, y))
+
+	output.append('</polygon>')
+	if globalLayer in signalLayers and not globalSig:
+		output.append('</signal>')
 	return output
 
 if __name__ == "__main__":
@@ -253,16 +278,21 @@ if __name__ == "__main__":
 	# Write out a text file with the EAGLE wires and polygons in separate sections
 	# TODO: throw these directly into the EAGLE file without destroying anything
 	with open("outfile.txt", 'w') as f:
-		f.write("Wires:\n\n")
 		
+		if globalLayer in signalLayers and globalSig:
+			f.write('<signal name="%s">' % globalSig)
+
 		for segment in wireSegments:
 			for wire in segment:
 				f.write(wire + "\n")
 
-		f.write("\n\nPolygons:\n")
+		f.write("\n\n\n")
 		
 		for polygon in polygons:
 			for line in polygon:
 				f.write(line + "\n")
+
+		if globalLayer in signalLayers and globalSig:
+			f.write('</signal>')
 
 
