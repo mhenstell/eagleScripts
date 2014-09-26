@@ -7,6 +7,8 @@ boardList = []
 boardFileList = []
 schematicFileList = []
 
+#Does not support holes??
+
 if __name__ == "__main__":
 
 	# Assemble the board list from the arguments
@@ -58,6 +60,8 @@ if __name__ == "__main__":
 
 	# Close the open files
 	for item in boardFileList:
+		item.close()
+	for item in schematicFileList:
 		item.close()
 	outBrd.close()
 	outSch.close()

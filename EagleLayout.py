@@ -185,7 +185,7 @@ class Board(Drawing):
 
 		for entry in self.plainList:
 			entry.transposePosition((x, y))
-			print "transposing %s" % entry.getType()
+			print "transposing %s" % entry
 
 	def transpose(self, (x, y)):
 		self.transposeElementPositions((x, y))
@@ -304,3 +304,7 @@ class Plain(Board):
 		elif self.getType() == 'hole':
 			self.xml.attrib['x'] = str(float(self.xml.attrib['x']) + float(x))
 			self.xml.attrib['y'] = str(float(self.xml.attrib['y']) + float(y))
+		elif self.getType() == 'polygon':
+			for vertex in self.xml._children:
+				vertex.attrib['x'] = str(float(vertex.attrib['x']) + float(x))
+				vertex.attrib['y'] = str(float(vertex.attrib['y']) + float(y))

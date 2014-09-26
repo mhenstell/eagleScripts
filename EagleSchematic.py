@@ -25,6 +25,8 @@ class Schematic:
 
 	def renameAllElements(self, postfix):
 
+		print "renaming elements for %s with %s" % (self.name, postfix)
+
 		remapping = {}
 
 		for part in self.drawing.schematic.partsList:
@@ -66,7 +68,7 @@ class Schematic:
 
 	def mergeLibraryType(self, newLibrary, libraryType):
 
-		print "\t\tMerging type %s for library %s" % (libraryType.tag, newLibrary.attrib['name'])
+		# print "\t\tMerging type %s for library %s" % (libraryType.tag, newLibrary.attrib['name'])
 
 		mainLibrary = [lib for lib in self.drawing.schematic.libraries if lib.attrib['name'] == newLibrary.attrib['name']][0]
 		mainLibraryType = [libType for libType in mainLibrary._children if libType.tag == libraryType.tag][0]
@@ -74,7 +76,7 @@ class Schematic:
 		for child in libraryType._children:
 			if child.tag != 'deviceset':
 
-				print "\t\t\tMerging %s %s" % (libraryType.tag, child.attrib['name'])
+				# print "\t\t\tMerging %s %s" % (libraryType.tag, child.attrib['name'])
 
 				# check if the symbol or package is in the main library, if not, append it
 				if child.attrib['name'] not in [unit.attrib['name'] for unit in mainLibraryType._children]:
@@ -82,7 +84,7 @@ class Schematic:
 
 			else:
 				# handle merging of devicesets
-				print "\t\t\tMerging deviceset %s in %s" % (child.attrib['name'], newLibrary.attrib['name'])
+				# print "\t\t\tMerging deviceset %s in %s" % (child.attrib['name'], newLibrary.attrib['name'])
 
 				# check if the entire deviceset is missing, if so, append it
 				if child.attrib['name'] not in [ds.attrib['name'] for ds in mainLibraryType._children]:
